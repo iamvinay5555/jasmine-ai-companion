@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jasmine-ai-companion"
-version = "1.1.0"
+version = "1.2.0"
 description = "Reusable AI companion starter app with memory, skills, and optional voice providers."
 readme = "README.md"
 requires-python = ">=3.10"

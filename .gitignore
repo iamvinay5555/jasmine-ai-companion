@@ -4,6 +4,9 @@ __pycache__/
 .env
 *.egg-info/
 jasmine_memory.json
+*.checkins.json
+checkin_history.json
+outbox/
 audio_cache/
 .pytest_cache/
 .coverage

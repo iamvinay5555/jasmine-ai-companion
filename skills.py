@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
-
-
 @dataclass(frozen=True, slots=True)
 class CompanionSkill:
     """A capability the companion can advertise and route to."""
@@ -19,9 +16,15 @@ class CompanionSkill:
 DEFAULT_SKILLS: tuple[CompanionSkill, ...] = (
     CompanionSkill(
         name="daily_check_in",
-        description="Send thoughtful proactive messages based on time of day, mood, and user preferences.",
+        description="Send thoughtful spontaneous messages based on time of day, topic freshness, and user preferences.",
         examples=("morning encouragement", "lunch reminder", "evening wind-down"),
-        handler_hint="scheduler + LLM prompt + notification channel",
+        handler_hint="CheckInGenerator + scheduler + notification/outbox delivery channel",
+    ),
+    CompanionSkill(
+        name="scheduled_jobs",
+        description="Create cron-style schedules for recurring companion actions such as check-ins and briefings.",
+        examples=("schedule spontaneous", "daily 09:30", "every 2h"),
+        handler_hint="CronJob + schedule preset parser + install instructions",
     ),
     CompanionSkill(
         name="memory_recall",
@@ -77,9 +80,11 @@ class SkillRouter:
             "voice": "voice_note",
             "audio": "voice_note",
             "check in": "daily_check_in",
+            "checkin": "daily_check_in",
             "remind": "daily_check_in",
+            "cron": "scheduled_jobs",
+            "schedule": "scheduled_jobs",
             "brief": "personal_briefing",
-            "schedule": "personal_briefing",
             "water": "wellbeing_nudge",
             "break": "wellbeing_nudge",
             "idea": "creative_partner",

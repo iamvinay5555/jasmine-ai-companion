@@ -2,8 +2,8 @@
 """Terminal demo for Jasmine AI Companion.
 
 The demo is intentionally generic: it shows how a configurable companion can use
-persona, memory, skills, and optional voice providers without embedding any
-private user story or personal details.
+persona, memory, skills, optional voice providers, spontaneous check-ins, and
+cron-style schedules without embedding private user details.
 """
 
 from __future__ import annotations
@@ -12,7 +12,9 @@ import argparse
 from pathlib import Path
 from typing import Iterable
 
+from checkins import CheckInGenerator, FileOutboxDelivery
 from jasmine_core import CompanionProfile, MemorySystem, get_core
+from scheduler import CronJob, parse_schedule_preset, render_install_instructions
 from skills import SkillRouter, render_skill_catalog
 from voice import VoiceProviderError, provider_from_env
 
@@ -27,15 +29,18 @@ except ImportError:  # pragma: no cover - depends on local environment
 class JasmineApp:
     """Small terminal interface for the companion platform."""
 
-    def __init__(self, profile: CompanionProfile, memory_path: Path):
+    def __init__(self, profile: CompanionProfile, memory_path: Path, outbox_path: Path):
         self.profile = profile
         self.memory = MemorySystem(memory_path)
         self.router = SkillRouter()
+        self.checkins = CheckInGenerator(history_path=memory_path.with_suffix(".checkins.json"))
+        self.delivery = FileOutboxDelivery(outbox_path)
         self.session_history: list[dict[str, str]] = []
         self.memory.seed(
             (
                 ("The companion should ask before taking external side effects.", "safety"),
                 ("Voice notes can use PocketTTS locally or ElevenLabs for expressive cloud audio.", "capability"),
+                ("Spontaneous check-ins can be scheduled with cron and delivered through an outbox or notification adapter.", "capability"),
             )
         )
 
@@ -44,8 +49,8 @@ class JasmineApp:
         print("🌸 JASMINE AI COMPANION — reusable AI companion platform demo 🌸")
         print("=" * 72)
         print(self.profile.greet())
-        print("This demo includes persona, memory, skill routing, and optional voice adapters.")
-        print("Commands: skills, memory, recall <topic>, voice <text>, quit")
+        print("This demo includes persona, memory, skills, voice, check-ins, and cron schedules.")
+        print("Commands: skills, memory, recall <topic>, voice <text>, checkin, schedule [preset], quit")
         print()
 
     def generate_response(self, user_input: str) -> str:
@@ -85,6 +90,10 @@ class JasmineApp:
             return f"Hey {self.profile.user_display_name}! I’m here — what would make today easier? 💜"
         if "voice" in lower or "audio" in lower:
             return "I can generate voice notes when PocketTTS or ElevenLabs is configured. Try: voice You’ve got this."
+        if "checkin" in lower or "check-in" in lower:
+            return "I can create spontaneous check-ins and write them to the local outbox. Try: checkin"
+        if "schedule" in lower or "cron" in lower:
+            return "I can render cron schedules. Try: schedule spontaneous, schedule daily 09:30, or schedule every 2h."
         if "remember" in lower or "recall" in lower:
             memories = self.memory.search(user_input, top_k=3)
             if memories:
@@ -95,7 +104,7 @@ class JasmineApp:
         if has_skill:
             skill = self.router.route(user_input)
             return f"I’d route that to the {skill.name} skill: {skill.description}"
-        return "Tell me a little more — I can remember preferences, make a plan, or turn this into a voice note."
+        return "Tell me a little more — I can remember preferences, make a plan, schedule check-ins, or turn this into a voice note."
 
     def run_scripted(self, prompts: Iterable[str]) -> None:
         self.welcome()
@@ -132,6 +141,12 @@ class JasmineApp:
         if command.lower() == "voice":
             self._voice(argument or "You’ve got this.")
             return
+        if command.lower() in {"checkin", "check-in"}:
+            self._send_checkin()
+            return
+        if command.lower() == "schedule":
+            self._print_schedule(argument or "spontaneous")
+            return
 
         self._extract_memory_candidates(user_input)
         self.session_history.append({"role": "user", "content": user_input})
@@ -164,6 +179,27 @@ class JasmineApp:
         except VoiceProviderError as exc:
             print(f"Voice generation unavailable: {exc}")
 
+    def _send_checkin(self) -> None:
+        message, result = self.checkins.send(self.profile, self.memory, self.delivery)
+        print(f"Check-in topic: {message.topic}")
+        print(f"{message.assistant_name}: {message.text}")
+        print(f"Delivery: {'ok' if result.ok else 'failed'} — {result.detail} ({result.destination})")
+
+    def _print_schedule(self, preset: str) -> None:
+        try:
+            schedule = parse_schedule_preset(preset)
+            job = CronJob(
+                name="jasmine-spontaneous-checkin",
+                schedule=schedule,
+                command=schedule_to_command(),
+                description="Send a spontaneous AI companion check-in.",
+            )
+            print(f"Cron expression: {job.schedule}")
+            print(f"Crontab line: {job.crontab_line()}")
+            print(render_install_instructions(job))
+        except ValueError as exc:
+            print(f"Invalid schedule: {exc}")
+
     def _extract_memory_candidates(self, text: str) -> None:
         lower = text.lower()
         indicators = ("i like", "i love", "i prefer", "my name is", "i live", "remember that")
@@ -171,19 +207,36 @@ class JasmineApp:
             self.memory.add(text, category="user_preference", confidence=0.75)
 
 
+def schedule_to_command() -> str:
+    return "python demo.py --send-checkin"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the Jasmine AI Companion terminal demo.")
     parser.add_argument("--assistant-name", default="Jasmine")
     parser.add_argument("--user", default="friend", help="Display name for the demo user")
     parser.add_argument("--memory", default="./jasmine_memory.json", help="Path to the local JSON memory store")
+    parser.add_argument("--outbox", default="./outbox/checkins.jsonl", help="Path for local check-in delivery outbox")
     parser.add_argument("--scripted", action="store_true", help="Run a deterministic scripted demo instead of interactive mode")
+    parser.add_argument("--send-checkin", action="store_true", help="Generate and deliver one spontaneous check-in, then exit")
+    parser.add_argument("--print-cron", default="", help="Print cron install instructions for a preset such as spontaneous, hourly, daily 09:30, or every 2h")
     return parser
+
+
+def build_app(args: argparse.Namespace) -> JasmineApp:
+    profile = get_core(assistant_name=args.assistant_name, user_display_name=args.user)
+    return JasmineApp(profile=profile, memory_path=Path(args.memory), outbox_path=Path(args.outbox))
 
 
 def main() -> None:
     args = build_parser().parse_args()
-    profile = get_core(assistant_name=args.assistant_name, user_display_name=args.user)
-    app = JasmineApp(profile=profile, memory_path=Path(args.memory))
+    app = build_app(args)
+    if args.print_cron:
+        app._print_schedule(args.print_cron)
+        return
+    if args.send_checkin:
+        app._send_checkin()
+        return
     if args.scripted:
         app.run_scripted(
             (
@@ -191,6 +244,8 @@ def main() -> None:
                 "I prefer short encouraging reminders",
                 "skills",
                 "recall reminders",
+                "checkin",
+                "schedule spontaneous",
                 "voice You are doing better than you think.",
             )
         )

@@ -26,10 +26,11 @@ def test_memory_add_search_roundtrip(tmp_path: Path):
     assert results[0].recall_count == 1
 
 
-def test_skill_router_finds_voice_and_briefing():
+def test_skill_router_finds_voice_schedule_and_briefing():
     router = SkillRouter()
     assert router.route("please make a voice note").name == "voice_note"
-    assert router.route("give me a schedule brief").name == "personal_briefing"
+    assert router.route("set a cron schedule").name == "scheduled_jobs"
+    assert router.route("give me a project brief").name == "personal_briefing"
     assert router.route("plain small talk") is None
 
 

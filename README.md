@@ -1,8 +1,10 @@
 # Jasmine AI Companion 🌸
 
 A reusable AI companion starter app with configurable persona, durable memory,
-skill routing, proactive check-in concepts, and optional voice generation through
-PocketTTS or ElevenLabs.
+skill routing, spontaneous check-ins, cron-style schedules, and optional voice
+generation through PocketTTS or ElevenLabs.
+
+Current version: **1.2.0**
 
 This repository is written as a general product scaffold. It does not embed any
 private user details, relationship story, API keys, or local machine paths. A
@@ -16,8 +18,13 @@ consumer-ready companion experience on top of it.
 - **Durable memory layer** — a local JSON memory store with add/search/list
   operations; simple enough for a demo, replaceable with Mem0, Postgres, SQLite,
   or a vector database in production.
-- **Skill/application catalog** — built-in modules for check-ins, memory recall,
-  voice notes, personal briefings, wellbeing nudges, and creative partnership.
+- **Skill/application catalog** — built-in modules for check-ins, scheduled jobs,
+  memory recall, voice notes, personal briefings, wellbeing nudges, and creative
+  partnership.
+- **Spontaneous check-ins** — generate fresh nudges, avoid recently used topics,
+  and deliver them through a local outbox or a custom notification adapter.
+- **Cron job helpers** — render portable schedules for recurring companion jobs
+  such as check-ins, briefings, or reminders.
 - **Voice provider adapters** — PocketTTS for local/free voice cloning and
   ElevenLabs for expressive cloud-generated audio.
 - **Terminal demo** — deterministic scripted mode for reviewers plus an
@@ -35,6 +42,8 @@ consumer-ready companion experience on top of it.
 │ Persona Profile │ Durable Memory   │ Skill Router            │
 │ tone + safety   │ JSON demo store  │ check-ins/briefings/etc │
 ├─────────────────┴──────────────────┴─────────────────────────┤
+│ Spontaneous Check-ins + Cron Job Schedule Helpers             │
+├──────────────────────────────────────────────────────────────┤
 │ Voice Providers: PocketTTS local clone | ElevenLabs cloud TTS │
 ├──────────────────────────────────────────────────────────────┤
 │ Interfaces: terminal today; web/mobile/messaging ready later  │
@@ -62,8 +71,24 @@ Useful commands inside the demo:
 skills
 memory
 recall reminders
+checkin
+schedule spontaneous
 voice You are doing better than you think.
 quit
+```
+
+One-shot check-in delivery to a local JSONL outbox:
+
+```bash
+python demo.py --send-checkin --outbox ./outbox/checkins.jsonl
+```
+
+Print cron install instructions:
+
+```bash
+python demo.py --print-cron spontaneous
+python demo.py --print-cron "daily 09:30"
+python demo.py --print-cron "every 2h"
 ```
 
 ## Voice setup
@@ -80,7 +105,7 @@ and full control over the reference voice sample.
 export JASMINE_VOICE_PROVIDER=pockettts
 export POCKET_TTS_BINARY=/absolute/path/to/pocket-tts
 export POCKET_TTS_VOICE=/absolute/path/to/reference_voice.wav
-export HF_TOKEN=your_huggingface_token_if_required
+export HF_TOKEN=replace_me_if_required
 python demo.py
 ```
 
@@ -97,7 +122,7 @@ provider is acceptable.
 
 ```bash
 export JASMINE_VOICE_PROVIDER=elevenlabs
-export ELEVENLABS_API_KEY=your_api_key
+export ELEVENLABS_API_KEY=replace_me
 export ELEVENLABS_VOICE_ID=your_voice_id
 export ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 python demo.py
@@ -111,7 +136,8 @@ OGG for voice-bubble delivery.
 
 The default catalog in `skills.py` includes:
 
-- `daily_check_in` — proactive morning/lunch/evening messages.
+- `daily_check_in` — spontaneous morning/lunch/evening messages.
+- `scheduled_jobs` — cron-style recurring schedules.
 - `memory_recall` — user preferences and stable context.
 - `voice_note` — PocketTTS or ElevenLabs voice generation.
 - `personal_briefing` — calendar/task/news-style summaries.
@@ -122,11 +148,38 @@ The demo uses a simple keyword router so it works offline. Production versions
 can replace that router with embeddings, tool-calling, or workflow orchestration
 without changing the public skill catalog.
 
+## Spontaneous check-ins and cron schedules
+
+Version 1.2.0 adds a concrete check-in pipeline:
+
+1. `CheckInGenerator` picks a topic while avoiding recently used topics.
+2. It renders a short, warm, general-purpose message using the configured
+   companion profile and optional memory context.
+3. `FileOutboxDelivery` writes the message to `outbox/checkins.jsonl` by
+   default, giving reviewers a real send artifact without external credentials.
+4. Production apps can replace the outbox with push notifications, Telegram,
+   Discord, SMS, email, or in-app inbox delivery.
+
+The default spontaneous schedule is:
+
+```cron
+0 8,12,16,20,22 * * * python demo.py --send-checkin # jasmine-spontaneous-checkin
+```
+
+Friendly schedule presets are supported:
+
+- `spontaneous` → `0 8,12,16,20,22 * * *`
+- `hourly` → `0 * * * *`
+- `daily HH:MM` → for example `daily 09:30`
+- `every Nh` → for example `every 2h`
+
 ## Files
 
 ```text
 jasmine_core.py   Persona, memory entries, and JSON memory store
 demo.py           Terminal application and scripted reviewer demo
+checkins.py       Spontaneous check-in generator and local outbox delivery
+scheduler.py      Cron job definitions, presets, and install instructions
 skills.py         Skill catalog and lightweight router
 voice.py          PocketTTS and ElevenLabs provider adapters
 jasmine.py        Public exports for package-style imports
@@ -140,7 +193,7 @@ super-app:
 
 1. Add a web/mobile UI for onboarding, memory review, and voice settings.
 2. Replace JSON memory with a permissioned database and user-controlled deletion.
-3. Add scheduler-backed proactive check-ins with quiet hours.
+3. Add quiet hours and per-user frequency controls for check-ins.
 4. Add messaging integrations such as Telegram, Discord, email, or SMS.
 5. Add explicit consent screens before external actions like sending messages.
 6. Add encrypted secret storage for provider keys.
