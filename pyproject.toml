@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jasmine-ai-companion"
+version = "1.1.0"
+description = "Reusable AI companion starter app with memory, skills, and optional voice providers."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Jasmine AI Companion contributors"}]
+dependencies = []
+
+[project.optional-dependencies]
+llm = ["ollama>=0.3.0"]
+dev = ["pytest>=8.0.0"]
+
+[project.scripts]
+jasmine-demo = "demo:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

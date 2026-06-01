@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+*.egg-info/
+jasmine_memory.json
+audio_cache/
+.pytest_cache/
+.coverage
+.DS_Store
